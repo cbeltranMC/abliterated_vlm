@@ -30,6 +30,38 @@ def cmd_build(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_start(args: argparse.Namespace) -> int:
+    from abliterated_vlm import server
+
+    return server.start(load_settings(), wait=args.wait)
+
+
+def cmd_stop(args: argparse.Namespace) -> int:
+    from abliterated_vlm import server
+
+    return server.stop(load_settings())
+
+
+def cmd_restart(args: argparse.Namespace) -> int:
+    from abliterated_vlm import server
+
+    settings = load_settings()
+    server.stop(settings)
+    return server.start(settings, wait=args.wait)
+
+
+def cmd_status(args: argparse.Namespace) -> int:
+    from abliterated_vlm import server
+
+    return server.status(load_settings())
+
+
+def cmd_logs(args: argparse.Namespace) -> int:
+    from abliterated_vlm import server
+
+    return server.logs(follow=args.follow, lines=args.lines)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="vlm", description=__doc__)
     parser.add_argument("--version", action="version", version=__version__)
@@ -45,6 +77,26 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("build", help="clone and compile llama.cpp's llama-server with CUDA")
     p.add_argument("-j", "--jobs", type=int, help="parallel compile jobs (default: all cores)")
     p.set_defaults(func=cmd_build)
+
+    for name, func, help_ in [
+        ("start", cmd_start, "turn the API on (load the model into the GPU)"),
+        ("restart", cmd_restart, "stop and start again (e.g. after editing .env)"),
+    ]:
+        p = sub.add_parser(name, help=help_)
+        p.add_argument("--wait", type=float, default=600, help="seconds to wait for the model to load")
+        p.set_defaults(func=func)
+
+    p = sub.add_parser("stop", help="turn the API off and free the GPU")
+    p.set_defaults(func=cmd_stop)
+
+    p = sub.add_parser("status", help="show whether the server is running and GPU usage")
+    p.set_defaults(func=cmd_status)
+
+    p = sub.add_parser("logs", help="show the llama-server log")
+    p.add_argument("-f", "--follow", action="store_true")
+    p.add_argument("-n", "--lines", type=int, default=50)
+    p.set_defaults(func=cmd_logs)
+
 
     return parser
 
