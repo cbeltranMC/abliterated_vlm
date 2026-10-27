@@ -62,6 +62,13 @@ def cmd_logs(args: argparse.Namespace) -> int:
     return server.logs(follow=args.follow, lines=args.lines)
 
 
+def cmd_opencode_config(args: argparse.Namespace) -> int:
+    from abliterated_vlm.opencode import render
+
+    sys.stdout.write(render(load_settings(), local_port=args.local_port))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="vlm", description=__doc__)
     parser.add_argument("--version", action="version", version=__version__)
@@ -97,7 +104,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("-n", "--lines", type=int, default=50)
     p.set_defaults(func=cmd_logs)
 
-
+    p = sub.add_parser("opencode-config", help="print the OpenCode provider config for the laptop")
+    p.add_argument("--local-port", type=int, help="laptop-side tunnel port (default: same as PORT)")
+    p.set_defaults(func=cmd_opencode_config)
     return parser
 
 
