@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+# Laptop-side helper: control the workstation's llama-server over SSH and
+# keep a local tunnel to it so OpenCode can use http://127.0.0.1:$VLM_LOCAL_PORT/v1.
+#
+# Copy this file to the laptop (e.g. ~/.local/bin/vlm-remote) and set:
+#   VLM_HOST        SSH destination of the workstation, e.g. mcso@192.168.21.101
+#                   or an alias from ~/.ssh/config (required)
+#   VLM_DIR         repo path on the workstation (default: ~/Desktop/Projects/abliterated_vlm)
+#   VLM_PORT        server port on the workstation (default: 8080)
+#   VLM_LOCAL_PORT  laptop-side tunnel port (default: same as VLM_PORT)
+set -euo pipefail
+
+VLM_DIR="${VLM_DIR:-~/Desktop/Projects/abliterated_vlm}"
+VLM_PORT="${VLM_PORT:-8080}"
+VLM_LOCAL_PORT="${VLM_LOCAL_PORT:-$VLM_PORT}"
+SOCK="${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/vlm-tunnel-${USER:-me}.sock"
+OPENCODE_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/opencode"
+
+usage() {
+  cat <<USAGE
+usage: vlm-remote <command>
+
+  on          start the model on the workstation and open the tunnel
+  off         stop the model (frees the workstation GPU) and close the tunnel
+  status      server status on the workstation + tunnel state
+  logs        follow the server log on the workstation (Ctrl-C to quit)
+  tunnel      open only the tunnel (server already running)
+  untunnel    close only the tunnel
+  config      install the OpenCode provider into $OPENCODE_DIR/opencode.json
+  opencode    'on', then run opencode with any extra arguments
+USAGE
+}
+
+: "${VLM_HOST:?set VLM_HOST to the workstation SSH destination, e.g. export VLM_HOST=mcso@192.168.21.101}"
+
+remote() {
+  # Non-interactive SSH shells often lack ~/.local/bin (where uv lives) on PATH.
+  ssh "$@" "$VLM_HOST" "cd $VLM_DIR && PATH=\$HOME/.local/bin:\$PATH uv run --quiet vlm ${REMOTE_ARGS}"
+}
+
+tunnel_up() { ssh -S "$SOCK" -O check "$VLM_HOST" >/dev/null 2>&1; }
+
+tunnel_open() {
+  if tunnel_up; then
+    echo "Tunnel already open: http://127.0.0.1:$VLM_LOCAL_PORT/v1"
+    return
+  fi
+  ssh -f -N -M -S "$SOCK" \
+    -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 \
+    -L "127.0.0.1:$VLM_LOCAL_PORT:127.0.0.1:$VLM_PORT" "$VLM_HOST"
+  echo "Tunnel open: http://127.0.0.1:$VLM_LOCAL_PORT/v1 -> $VLM_HOST:$VLM_PORT"
+}
+
+tunnel_close() {
+  if tunnel_up; then
+    ssh -S "$SOCK" -O exit "$VLM_HOST" 2>/dev/null
+    echo "Tunnel closed."
+  else
+    echo "Tunnel not open."
+  fi
+}
+
+install_config() {
+  mkdir -p "$OPENCODE_DIR"
+  local target="$OPENCODE_DIR/opencode.json" new
+  new="$(REMOTE_ARGS="opencode-config --local-port $VLM_LOCAL_PORT" remote)"
+  if [[ ! -s "$target" ]]; then
+    printf '%s\n' "$new" >"$target"
+    echo "Wrote $target"
+  elif command -v jq >/dev/null; then
+    cp "$target" "$target.bak"
+    jq -s '.[0] * .[1]' "$target.bak" <(printf '%s\n' "$new") >"$target"
+    echo "Merged the 'workstation' provider into $target (backup: $target.bak)"
+  else
+    printf '%s\n' "$new" >"$OPENCODE_DIR/workstation-provider.json"
+    echo "$target already exists and jq is not installed."
+    echo "Copy the \"provider\".\"workstation\" block from $OPENCODE_DIR/workstation-provider.json into it."
+  fi
+}
+
+case "${1:-}" in
+  on)       REMOTE_ARGS="start" remote; tunnel_open ;;
+  off)      tunnel_close; REMOTE_ARGS="stop" remote ;;
+  status)   REMOTE_ARGS="status" remote || true
+            if tunnel_up; then echo "tunnel: open (127.0.0.1:$VLM_LOCAL_PORT)"; else echo "tunnel: closed"; fi ;;
+  logs)     REMOTE_ARGS="logs -f" remote -t ;;
+  tunnel)   tunnel_open ;;
+  untunnel) tunnel_close ;;
+  config)   install_config ;;
+  opencode) shift; REMOTE_ARGS="start" remote; tunnel_open; exec opencode "$@" ;;
+  *)        usage; exit 1 ;;
+esac
