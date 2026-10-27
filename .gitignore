@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+build/
+dist/
+
+# Model weights (tens of GB, downloaded with `uv run vlm download`)
+models/
+
+# llama.cpp source checkout and build (created by `uv run vlm build`)
+vendor/
+
+# Runtime state: PID file and server logs
+run/
+logs/
+
+# Local configuration (may contain an API key)
+.env
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
