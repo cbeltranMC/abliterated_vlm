@@ -23,6 +23,13 @@ def cmd_download(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_build(args: argparse.Namespace) -> int:
+    from abliterated_vlm.build import build
+
+    build(load_settings(), jobs=args.jobs)
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="vlm", description=__doc__)
     parser.add_argument("--version", action="version", version=__version__)
@@ -34,6 +41,11 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("download", help="download the GGUF model from Hugging Face")
     p.add_argument("--no-mmproj", action="store_true", help="skip the vision projector")
     p.set_defaults(func=cmd_download)
+
+    p = sub.add_parser("build", help="clone and compile llama.cpp's llama-server with CUDA")
+    p.add_argument("-j", "--jobs", type=int, help="parallel compile jobs (default: all cores)")
+    p.set_defaults(func=cmd_build)
+
     return parser
 
 
