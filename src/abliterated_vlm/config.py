@@ -21,7 +21,7 @@ class Settings:
     port: int = 8080
     api_key: str = ""
 
-    ctx_size: int = 65536
+    ctx_size: int = 98304
     n_gpu_layers: int = 999
     cache_type_k: str = "q8_0"
     cache_type_v: str = "q8_0"
